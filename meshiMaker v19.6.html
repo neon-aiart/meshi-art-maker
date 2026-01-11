@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<!--
+* ==============================================================================
+ * IMPORTANT NOTICE / 重要事項
+ * ==============================================================================
+ * Copyright (c) 2025-2026 ねおん (Neon)
+ * Licensed under the PolyForm Noncommercial License 1.0.0.
+ * https://polyformproject.org/licenses/noncommercial/1.0.0/
+ * [JP] 本アプリケーションのコード（HTML/CSS/JS）は、個人利用・非営利目的でのみ使用・改変が許可されます。
+ * 無断での再公開（ミラーサイト、転載）、作者名の書き換え、およびクレジットの削除は固く禁じます。
+ * 本プロジェクトを改変・配布（フォーク）する場合は、必ず元の作者名（ねおん）
+ * およびこのクレジット表記を維持してください。
+ * [EN] The code of this application (HTML/CSS/JS) is licensed for personal 
+ * and non-commercial use only. Unauthorized re-uploading, mirroring, 
+ * modification of authorship, or removal of author credits is strictly prohibited. 
+ * If you fork this project, you MUST retain the original credits and authorship.
+ * ==============================================================================
+-->
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍽️ 飯テロメーカー</title>
+    <!-- Tailwind CSSのCDNを読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- フォントとアイコンのCDNを読み込み -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Firebase Libraries -->
+    <script type="module">
+        // Firebaseの各機能をインポート
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase Global Variables (Provided by Canvas) ---
+        // これらの変数はCanvas環境から自動で提供されるため、編集しないでください。
+        const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-app-id';
+        const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {};
+        const initialAuthToken = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : '';
+
+        // Firebaseのグローバル変数を設定
+        window.firebase = {
+            initializeApp,
+            getAuth,
+            signInAnonymously,
+            signInWithCustomToken,
+            onAuthStateChanged,
+            getFirestore,
+            doc,
+            getDoc,
+            addDoc,
+            setDoc,
+            updateDoc,
+            deleteDoc,
+            onSnapshot,
+            collection,
+            query,
+            where,
+            getDocs,
+        };
+
+        // Firebase初期化
+        window.app = initializeApp(firebaseConfig);
+        window.db = getFirestore(window.app);
+        window.auth = getAuth(window.app);
+        setLogLevel('debug');
+
+        // Custom tokenでサインイン、失敗したら匿名でサインイン
+        if (initialAuthToken.length > 0) {
+            signInWithCustomToken(window.auth, initialAuthToken).catch((error) => {
+                console.error("Custom token sign-in failed:", error);
+                signInAnonymously(window.auth);
+            });
+        } else {
+            signInAnonymously(window.auth);
+        }
+    </script>
+    <style>
+        /* 全体のスタイル設定 */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a2e;
+            color: #E4E4E7;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+        /* コンテナのスタイル */
+        .container {
+            width: 100%;
+            max-width: 900px;
+            padding: 2rem;
+            background-color: #27273d;
+            border-radius: 1rem;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25), 0 6px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+        /* ロード中のドットアニメーション */
+        .loading-dots {
+            font-size: 3rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-dots span {
+            animation: pulse-dot 1.4s infinite;
+            margin: 0 0.5rem;
+            animation-delay: -0.6s;
+        }
+        .loading-dots span:nth-child(2) {
+            animation-delay: -0.3s;
+        }
+        .loading-dots span:nth-child(3) {
+            animation-delay: 0s;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { transform: scale(0.7); opacity: 0.5; }
+            50% { transform: scale(1.2); opacity: 1; }
+        }
+        /* 画像カードのスタイル */
+        .image-card {
+            background-color: #3b3b5c;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: border-color 0.3s ease;
+        }
+        .image-card.selected {
+            border-color: #f59e0b;
+        }
+        .image-card img {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+        .image-card:hover img {
+            transform: scale(1.05);
+        }
+        /* 画像に重ねて表示するダウンロードアイコンのスタイル */
+        .image-overlay {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            width: 3rem;    /* 48px 程度 */
+            height: 3rem;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.3);
+            transition: background-color 0.3s ease;
+            border: none;
+            cursor: pointer;
+            z-index:10;
+        }
+        .image-overlay .material-icons {
+            transform: translate(0px, 0px); /* アイコン位置の微調整 */
+        }
+        .image-overlay:hover {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        /* プロンプト結果表示ボックスのスタイル */
+        .prompt-result-box {
+            background-color: #3b3b5c;
+            border-radius: 0.75rem;
+            font-size: 0.875rem;
+            word-wrap: break-word;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            position: relative; /* コピーボタンの配置のため追加 */
+        }
+        #resultText {
+            white-space: pre-wrap;
+            /* ボタンが重ならないように上のパディングを調整 */
+            padding-top: 4rem; 
+        }
+        /* ツールチップのスタイル */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 10px;
+            position: absolute;
+            z-index: 10;
+            top: 150%; 
+            left: 50%;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem; 
+            font-weight: 400; 
+        }
+        .tooltip .tooltiptext.info-tooltip {
+            width: 420px;
+            margin-left: -240px;
+        }
+        .tooltip .tooltiptext.action-tooltip {
+            width: auto; 
+            white-space: nowrap; 
+            right: 0;        /* 右端を親要素に合わせる */
+            left: auto;      /* leftの指定を解除 */
+            transform: none; /* transformを解除 */
+        }
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            bottom: 100%; 
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: transparent transparent #555 transparent;
+            right: auto;     /* 右からの位置を指定 */
+            left: 240px;     /* leftの指定を解除 */
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        /* 無効化されたボタンのスタイル */
+        .llm-button:disabled {
+            background-color: #4a4a4a !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .llm-button:disabled:hover {
+            background-color: #4a4a4a !important;
+            transform: none !important;
+        }
+        .llm-select:disabled {
+            background-color: #4a4a4a !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        /* セレクトボックスの右端に表示されるアイコンのスタイル */
+        .select-icon {
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: #d1d5db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダーセクション -->
+        <header class="text-center">
+            <h1 class="text-3xl md:text-4xl font-bold mb-2 flex items-center justify-center gap-2">
+                <span>🍽️ 飯テロメーカー</span>
+                <span id="app-version" class="text-lg text-gray-400"></span>
+                <div class="tooltip">
+                    <span class="material-icons text-gray-400 cursor-pointer text-2xl">info</span>
+                    <span class="tooltiptext info-tooltip" style="text-align: left; padding: 10px; white-space: normal; line-height: 1.6;">
+                        <b>✨使い方✨</b><br>
+                        1. 食欲をそそられる料理名を入力します。<br>
+                        2. スタイル（初期値：フードブログ風）や背景（空欄は明るいカフェ）を指定すると、より凝った画像が生成されやすくなります。<br>
+                        3. 「飯テロ生成」ボタンを押します。<br>
+                        4. 生成された画像から１枚選んで、食レポや献立のアイデアを生成できます。<br>
+                        ※文字数は指定より多めになることがあります。<br>
+                        5. プロンプトアイコンを押すと、画像生成に使われた呪文（プロンプト）をコピーできます。
+                    </span>
+                </div>
+                <div class="tooltip">
+                    <span class="material-icons text-gray-400 cursor-pointer text-2xl">copyright</span>
+                    <span class="tooltiptext info-tooltip" style="text-align: left; padding: 10px; white-space: normal; line-height: 1.6;">
+                        <h3 class="text-lg font-bold mb-2 text-white text-left">著作権情報 / Copyright</h3>
+                        <div class="text-gray-300 text-left text-sm">
+                            <p class="font-bold">Copyright (c) 2025-2026 ねおん (Neon)</p>
+
+                            <p class="mt-2 font-bold">基本ライセンス / License:</p>
+                            <p>PolyForm Noncommercial License 1.0.0</p>
+                            <p class="text-xs text-gray-400 italic">https://polyformproject.org/licenses/noncommercial/1.0.0/</p>
+
+                            <p class="mt-2 font-bold">■ 利用上のルール (JP)</p>
+                            <p>1. <strong>非営利限定:</strong> 本アプリは個人利用・非営利目的でのみ使用可能です。</p>
+                            <p>2. <strong>禁止事項:</strong> 営利目的の利用、コードの改変、無断での再配布（転載・ミラー等）、および作者名の書き換えを固く禁じます。</p>
+                            <p>3. <strong>権利の維持:</strong> 本プロジェクトを引用・参照する場合は、必ず元の作者名（ねおん）とこのクレジットを維持してください。</p>
+
+                            <p class="mt-2 font-bold">■ Usage Rules (EN)</p>
+                            <p>1. <strong>Non-commercial Only:</strong> This app is for personal and non-commercial use only.</p>
+                            <p>2. <strong>Prohibition:</strong> Commercial use, modification of code, unauthorized redistribution (mirroring), and claiming authorship are strictly prohibited.</p>
+                            <p>3. <strong>Attribution:</strong> You must retain the original authorship and credits.</p>
+
+                            <p class="mt-2 font-bold">■ 生成したAIイラストについて / Generated Images</p>
+                            <p>クレジット表記不要。SNS投稿時はAIタグ推奨。Googleの利用規約を順守してください。</p>
+                            <p class="text-xs">No credit required. AI tags are recommended for SNS. Please comply with Google's Terms of Service.</p>
+                        </div>
+                    </span>
+                </div>
+            </h1>
+            <p class="text-gray-400">
+                最高の飯テロ画像を生成するよ✨<br>
+                例：ラーメン、チョコレートパフェ、チーズバーガー
+            </p>
+            <!-- ユーザーID表示 -->
+            <div class="text-sm text-gray-500 mt-2" hidden>
+                ユーザーID: <span id="userIdDisplay" class="text-xs break-all">認証中...</span>
+            </div>
+        </header>
+
+        <div class="flex flex-col space-y-4">
+            <!-- プロンプト入力と生成ボタン -->
+            <div class="flex flex-row space-x-4">
+                <input type="text" id="promptInput" placeholder="例：ラーメン、チョコレートパフェ、チーズバーガー" autocomplete="off" class="text-input flex-grow bg-gray-700 p-3 rounded-full text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <button id="generateBtn" class="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 px-8 rounded-full shadow-lg transform transition-transform duration-200 hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                    飯テロ生成
+                </button>
+            </div>
+            <!-- 詳細設定オプション -->
+            <div id="advancedOptions" class="grid grid-cols-[1fr_2fr] gap-4">
+                <div class="relative">
+                    <select id="styleSelect" class="w-full bg-gray-700 p-3 rounded-full text-white border border-gray-600 appearance-none focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="default">スタイル （任意）</option>
+                        <option value="photorealistic">リアルな写真風</option>
+                        <option value="cinematic">映画のワンシーン風</option>
+                        <option value="anime">アニメ・イラスト風</option>
+                        <option value="food-blogger" selected>フードブログ風</option>
+                        <option value="dark-moody">ダークで雰囲気重視</option>
+                    </select>
+                    <span class="material-icons select-icon">keyboard_arrow_down</span>
+                </div>
+                <input type="text" id="backgroundInput" placeholder="背景や雰囲気 （例: 夜景、高級レストラン、明るいカフェ）" autocomplete="off" class="text-input w-full bg-gray-700 p-3 rounded-full text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <!-- シェフの気まぐれメニュー -->
+            <span>👩🏻‍🍳 シェフの気まぐれメニュー: </span>
+            <div class="flex flex-row text-sm space-x-2 justify-center">
+                <button id="todaySpecialBtn" class="bg-fuchsia-400 hover:bg-fuchsia-500 text-white font-semibold py-2 px-4 rounded-full shadow-lg transform transition-transform duration-200 hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                    📅 本日の記念日
+                </button>
+                <button id="seasonalSpecialBtn" class="bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-4 rounded-full shadow-lg transform transition-transform duration-200 hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                    🌸 季節の彩り
+                </button>
+                <button id="trendSpecialBtn" class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-full shadow-lg transform transition-transform duration-200 hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                    ⚡ 最近のトレンド
+                </button>
+            </div>
+        </div>
+
+        <!-- ロード中のアニメーション -->
+        <div id="loadingIndicator" class="flex flex-col justify-center items-center h-32 hidden">
+            <div class="loading-dots">
+                <span class="text-2xl">🍣</span>
+                <span class="text-2xl">🍝</span>
+                <span class="text-2xl">🥞</span>
+            </div>
+            <p class="mt-4 text-gray-400">画像を生成中だよ...少し待っててね。</p>
+        </div>
+
+        <!-- 生成された画像を表示するグリッド -->
+        <div id="imageGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        </div>
+
+        <!-- Firebase利用状況表示セクション -->
+        <div id="firebaseUsageInfo" class="space-y-4 p-6 bg-[#3b3b5c] rounded-lg" hidden>
+            <h2 class="text-2xl font-bold text-center">✨ Firebase利用状況の目安 ✨</h2>
+            <p class="text-center text-gray-400 text-sm">
+                これはFirebaseの無料プラン（Sparkプラン）の一般的な制限です。<br>
+                正確な使用状況は<a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" class="text-amber-400 hover:underline">Firebaseコンソール</a>にアクセス後、ご自身のプロジェクトを選択し、各サービスの「使用状況」タブで確認できます。
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Firestore 情報 -->
+                <div class="p-4 bg-[#27273d] rounded-lg">
+                    <h3 class="font-bold text-lg mb-2">Cloud Firestore</h3>
+                    <ul class="space-y-1 text-sm text-gray-300">
+                        <li><span class="font-semibold">最大ストレージ:</span> 1 GiB</li>
+                        <li><span class="font-semibold">ネットワーク送信:</span> 10 GiB / 月</li>
+                        <li><span class="font-semibold">ドキュメント読み取り:</span> 50,000 / 日</li>
+                        <li><span class="font-semibold">ドキュメント書き込み:</span> 20,000 / 日</li>
+                        <li><span class="font-semibold">ドキュメント削除:</span> 20,000 / 日</li>
+                    </ul>
+                </div>
+
+                <!-- Cloud Storage 情報 -->
+                <div class="p-4 bg-[#27273d] rounded-lg">
+                    <h3 class="font-bold text-lg mb-2">Cloud Storage</h3>
+                    <ul class="space-y-1 text-sm text-gray-300">
+                        <li><span class="font-semibold">最大ストレージ:</span> 5 GiB</li>
+                        <li><span class="font-semibold">ダウンロード:</span> 1 GB / 日</li>
+                        <li><span class="font-semibold">アップロード操作:</span> 20,000 / 日</li>
+                        <li><span class="font-semibold">ダウンロード操作:</span> 50,000 / 日</li>
+                    </ul>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 text-center pt-2">
+                ※ これらの値は動的に取得された現在値ではなく、プランに基づいた静的な上限値です。現在使用量や残り容量は表示できません。
+            </p>
+        </div>
+
+        <!-- 追加コンテンツ（食レポ・献立アイデア） -->
+        <div id="additionalContent" class="flex flex-col space-y-4 hidden">
+            <div id="llmButtons" class="flex flex-wrap justify-center items-center space-x-4 mb-4">
+                <button id="reviewBtn" class="llm-button bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-full transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
+                    📝 食レポ生成
+                </button>
+                <div class="relative inline-block">
+                    <span class="text-gray-400">文字数：</span>
+                    <select id="lengthSelect" class="llm-select bg-gray-700 text-white rounded-full px-4 py-2 text-sm appearance-none pr-8 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                        <option value="150">150</option>
+                        <option value="200" selected>200</option>
+                        <option value="250">250</option>
+                        <option value="300">300</option>
+                        <option value="350">350</option>
+                        <option value="400">400</option>
+                        <option value="450">450</option>
+                        <option value="500">500</option>
+                    </select>
+                    <span class="material-icons select-icon text-base">keyboard_arrow_down</span>
+                </div>
+                <span class="text-gray-400 flex items-center space-x-2"> | </span>
+                <button id="menuBtn" class="llm-button bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-full transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
+                    🍽️ 献立アイデア
+                </button>
+                <span class="text-gray-400 flex items-center space-x-2"> | </span>
+                <div class="tooltip">
+                    <button id="promptCopyBtn" class="w-10 h-10 rounded-full text-gray-400 hover:bg-gray-700 transition-colors">
+                        <span class="material-icons text-lg">article</span>
+                    </button>
+                    <span class="tooltiptext action-tooltip">プロンプトコピー</span>
+                </div>
+            </div>
+
+            <!-- LLMからの回答表示ボックス -->
+            <div id="promptResultBox" class="prompt-result-box hidden">
+                <div id="textLoadingIndicator" class="flex flex-col justify-center items-center h-full p-4 hidden">
+                    <div class="loading-dots">
+                        <span class="text-2xl">🍛</span>
+                        <span class="text-2xl">🍔</span>
+                        <span class="text-2xl">🍰</span>
+                    </div>
+                    <p class="mt-4 text-gray-400">文章を生成中だよ...少し待っててね。</p>
+                </div>
+                <div class="absolute top-2 right-2 z-10 flex space-x-1">
+                    <div class="tooltip">
+                        <button id="kansaiToggleBtn" class="llm-button w-10 h-10 text-gray-400 hover:bg-gray-700 font-semibold py-0 px-2 rounded-full transition-colors hidden">
+                            <span class="material-symbols-outlined"></span> 西
+                        </button>
+                        <span class="tooltiptext action-tooltip">関西弁</span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="hakataToggleBtn" class="llm-button w-10 h-10 text-gray-400 hover:bg-gray-700 font-semibold py-0 px-2 rounded-full transition-colors hidden">
+                            <span class="material-symbols-outlined"></span> 博
+                        </button>
+                        <span class="tooltiptext action-tooltip">博多弁</span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="tsugaruToggleBtn" class="llm-button w-10 h-10 text-gray-400 hover:bg-gray-700 font-semibold py-0 px-2 rounded-full transition-colors hidden">
+                            <span class="material-symbols-outlined"></span>津
+                        </button>
+                        <span class="tooltiptext action-tooltip">津軽弁</span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="uchinaguchiToggleBtn" class="llm-button w-10 h-10 text-gray-400 hover:bg-gray-700 font-semibold py-0 px-2 rounded-full transition-colors hidden">
+                            <span class="material-symbols-outlined"></span> 沖
+                        </button>
+                        <span class="tooltiptext action-tooltip">うちなーぐち</span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="galmojiToggleBtn" class="llm-button w-10 h-10 text-gray-400 hover:bg-gray-700 font-semibold py-2 px-2 rounded-full transition-colors hidden">
+                            <span class="material-icons text-lg">favorite</span>
+                        </button>
+                        <span class="tooltiptext action-tooltip">ギャル文字</span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="copyBtn" class="llm-button p-2 w-10 h-10 rounded-full text-gray-400 hover:bg-gray-700 transition-colors hidden">
+                            <span class="material-icons text-lg">content_copy</span>
+                        </button>
+                        <span id="copyBtnTooltip" class="tooltiptext action-tooltip">食レポコピー</span>
+                    </div>
+                </div>
+                <div id="tempMessage" class="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-gray-800 text-white rounded-lg shadow-lg opacity-0 transition-opacity duration-300 z-50 pointer-events-none hidden"></div>
+                <!-- LLMの回答が表示される部分 -->
+                <div id="resultText" class="p-4"></div>
+                <!-- 文字数カウンター -->
+                <div id="charCount" class="text-xs text-gray-500 text-right px-4 pb-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        /* Copyright (c) 2025-2026 ねおん / Licensed under PolyForm Noncommercial 1.0.0 (https://polyformproject.org/licenses/noncommercial/1.0.0/) */
+        const APP_VERSION = '19.6';
+
+        // Firebaseライブラリをインポート
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+
+        // --- 定数とUI要素の取得 ---
+        const API_KEY = ""; // APIキーはCanvas環境から提供されるので空のままでOK
+        const TRANSLATION_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
+        const IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${API_KEY}`;
+        const LLM_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
+        const IMAGE_COUNT = 4; // 一度に生成する画像の数
+
+        // HTMLから操作したい要素をまとめて取得
+        document.title = `🍽️ 飯テロメーカー v${APP_VERSION}`;
+        const appVersionSpan = document.getElementById('app-version');
+        appVersionSpan.textContent = `v${APP_VERSION}`;
+        const generateBtn = document.getElementById('generateBtn');
+        const promptInput = document.getElementById('promptInput');
+        const backgroundInput = document.getElementById('backgroundInput');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const imageGrid = document.getElementById('imageGrid');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const additionalContent = document.getElementById('additionalContent');
+        const reviewBtn = document.getElementById('reviewBtn');
+        const lengthSelect = document.getElementById('lengthSelect');
+        const menuBtn = document.getElementById('menuBtn');
+        const promptResultBox = document.getElementById('promptResultBox');
+        const resultText = document.getElementById('resultText');
+        const copyBtn = document.getElementById('copyBtn');
+        const textLoadingIndicator = document.getElementById('textLoadingIndicator');
+        const promptCopyBtn = document.getElementById('promptCopyBtn');
+        const copyBtnTooltip = document.getElementById('copyBtnTooltip'); 
+        const galmojiToggleBtn = document.getElementById('galmojiToggleBtn');
+        const kansaiToggleBtn = document.getElementById('kansaiToggleBtn');
+        const hakataToggleBtn = document.getElementById('hakataToggleBtn');
+        const tsugaruToggleBtn = document.getElementById('tsugaruToggleBtn');
+        const uchinaguchiToggleBtn = document.getElementById('uchinaguchiToggleBtn');
+        const todaySpecialBtn = document.getElementById('todaySpecialBtn');
+        const seasonalSpecialBtn = document.getElementById('seasonalSpecialBtn');
+        const trendSpecialBtn = document.getElementById('trendSpecialBtn');
+
+        // 各ボタンの設定
+        kansaiToggleBtn.addEventListener('click', () => handleDialectClick('関西弁', kansaiToggleBtn, 'text-emerald-400'));
+        hakataToggleBtn.addEventListener('click', () => handleDialectClick('博多弁', hakataToggleBtn, 'text-purple-400'));
+        tsugaruToggleBtn.addEventListener('click', () => handleDialectClick('津軽弁', tsugaruToggleBtn, 'text-sky-400'));
+        uchinaguchiToggleBtn.addEventListener('click', () => handleDialectClick('うちなーぐち', uchinaguchiToggleBtn, 'text-orange-400'));
+
+        todaySpecialBtn.addEventListener('click', () => suggestChefMenu('anniversary'));
+        seasonalSpecialBtn.addEventListener('click', () => suggestChefMenu('seasonal'));
+        trendSpecialBtn.addEventListener('click', () => suggestChefMenu('trend'));
+
+        // --- グローバル変数 ---
+        let userId = null;              // ユーザーIDを保存
+        let selectedImageBase64 = null; // 選択された画像のBase64データを保存
+        let isGeneratingText = false;   // テキスト生成中かどうかを示すフラグ
+        let currentImagePrompt = null;  // 現在の画像生成プロンプトを保存
+        let originalText = '';          // AIが生成した元の文章
+        let translatedTextCache = {};
+        let currentTransformMode = null;
+        let toastTimeoutId = null;      // トースト表示のタイマー管理
+        let copyTimer = null;           // アイコン復元用のタイマー管理
+        let originalIconContent = null; // アイコンの原型を保存
+        const canvasAppId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-app-id';
+        const storage = getStorage(window.app); // window.app が Firebase の初期化インスタンスと仮定
+
+        // --- Firebase認証 ---
+        // ユーザーのログイン状態を監視して、ユーザーIDを取得
+        onAuthStateChanged(window.auth, async (user) => {
+            if (user) {
+                // ログイン済みの場合は、そのユーザーIDを使用
+                userId = user.uid || crypto.randomUUID();
+                userIdDisplay.textContent = userId;
+            } else {
+                // 未ログインの場合は、ランダムなIDを一時的に使用
+                userId = crypto.randomUUID();
+                userIdDisplay.textContent = userId;
+            }
+            generateBtn.disabled = false; // 認証が完了したら生成ボタンを有効化
+        });
+
+        // --- API通信 ---
+
+        /**
+         * API呼び出しが失敗した際に、少し待ってから再度試行する関数
+         * @param {Function} fetcher - 実行したいfetch処理
+         * @param {number} maxRetries - 最大リトライ回数
+         * @returns {Promise<Response>} fetchのレスポンス
+         */
+        const fetchWithRetry = async (fetcher, maxRetries = 3) => {
+            let attempt = 0;
+            while (attempt < maxRetries) {
+                try {
+                    const response = await fetcher();
+                    if (response.ok) {
+                        return response; // 成功したらレスポンスを返す
+                    }
+                    // 401認証エラーの場合もリトライを試みる
+                    if (response.status === 401) {
+                        console.warn(`API認証エラー(401)が発生しました。リトライします... (${attempt + 1}/${maxRetries})`);
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                } catch (error) {
+                    console.error(`API呼び出し試行 ${attempt + 1}回目で失敗: ${error.message}`, error);
+                    attempt++;
+                    if (attempt >= maxRetries) {
+                        // 全てのリトライが失敗した場合
+                        if (error.message.includes('401')) {
+                            throw new Error('API認証エラーが発生しました。しばらくしてから再度お試しください。');
+                        }
+                        throw error; // 最後の特定エラーを投げ直す
+                    }
+                    // リトライの間隔を徐々に長くする（Exponential Backoff）
+                    const delay = 1000 * Math.pow(2, attempt);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        };
+
+        /**
+         * シンプルな翻訳機能（高度なプロンプト生成が失敗した時の予備）
+         * @param {string} text - 翻訳したい日本語のテキスト
+         * @returns {Promise<string>} 翻訳された英語のテキスト
+         */
+        const translatePrompt = async (text) => {
+            const payload = {
+                contents: [{ parts: [{ text: `Translate the following Japanese food name or phrase into a detailed English prompt for an image generation model: "${text}". The translation should focus on making the food look as delicious and appetizing as possible. Do not add any extra text, just the English prompt.` }] }],
+                systemInstruction: {
+                    parts: [{ text: "You are a professional prompt engineer for a food image generation model. Your task is to create the most appetizing and delicious-sounding English prompts based on user input." }]
+                }
+            };
+            try {
+                const response = await fetchWithRetry(() => fetch(TRANSLATION_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }));
+                const result = await response.json();
+                const translatedText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!translatedText) throw new Error('翻訳に失敗しました: レスポンスにテキストが含まれていません');
+                return translatedText;
+            } catch (error) {
+                console.error('翻訳に失敗しました:', error);
+                return text; // 失敗した場合は元のテキストを返す
+            }
+        };
+
+        /**
+         * ユーザー入力から高度な画像生成プロンプトを作成する
+         * @param {string} food - 料理名
+         * @param {string} style - スタイル
+         * @param {string} background - 背景
+         * @returns {Promise<string>} 生成された英語のプロンプト
+         */
+        const createImagePrompt = async (food, style, background) => {
+            let userRequest = `料理名: 「${food}」`;
+            if (style && style !== 'default') {
+                userRequest += `, スタイル: 「${style}」`;
+            }
+            if (background) {
+                userRequest += `, 背景や雰囲気: 「${background}」`;
+            }
+
+            // AIに対する詳細な指示（システムプロンプト）
+            const systemPrompt = `あなたは、料理の写真生成AIのためのプロのプロンプトクリエイターです。ユーザーからのシンプルなリクエストを、非常に詳細でプロフェッショナル、かつ食欲をそそるようなプロンプトに変換し、最高の料理画像を生成させることがあなたの役割です。
+                                以下のルールに厳密に従ってください:
+                                1. **料理の分析:** リクエストされた料理の主要な構成要素、質感、特徴を深く理解してください。(例: 「ラーメン」なら、麺、スープ、チャーシュー、ネギ、メンマなど)
+                                2. **形容詞の活用:** 「艶やかな(glistening)」「湯気が立つ(steaming)」「完璧な焼き色の(perfectly seared)」「濃厚で風味豊かな(rich and savory)」など、五感を刺激する形容詞を多用してください。
+                                3. **スタイルの反映:** スタイルが指定されている場合（例: cinematic, food-blogger）、関連するキーワードを巧みに組み込んでください。(例: 「映画的なライティング(cinematic lighting)」「浅い被写界深度(shallow depth of field)」「俯瞰撮影(top-down shot)」「自然光(natural light)」)
+                                4. **シーンの構築:** 背景の情報を元に、完全なシーンを描写してください。テーブルの素材、照明、周囲の環境などを具体的に記述します。
+                                5. **写真技術の専門用語:** 「フォトリアル(photorealistic)」「超シャープな焦点(ultra-sharp focus)」「8k」「デジタル一眼レフ(DSLR)」「ボケ(bokeh)」「高精細(high detail)」といった専門用語を適切に含めてください。
+                                6. **プロンプトの構造化:** 特に重要な要素には \`(word:1.2)\` のように重み付けをしてください。
+                                7. **出力形式:** 最終的な英語のプロンプト「のみ」を出力してください。説明、言い訳、引用符などの余計なテキストは一切含めないでください。出力は、画像生成モデルが直接読み込める、単一の連続した文字列でなければなりません。`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userRequest }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+            };
+
+            try {
+                const response = await fetchWithRetry(() => fetch(TRANSLATION_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }));
+                const result = await response.json();
+                const finalPrompt = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!finalPrompt) throw new Error('プロンプトの作成に失敗しました');
+                console.log("生成された画像プロンプト:", finalPrompt); // デバッグ用にコンソールに表示
+                return finalPrompt.trim();
+            } catch (error) {
+                console.error('高度な画像プロンプトの作成に失敗しました:', error);
+                // 失敗した場合は、シンプルな翻訳機能に切り替える
+                return await translatePrompt(food); 
+            }
+        };
+
+        // --- 画像生成と表示 ---
+        /**
+         * 画像を生成するメインの関数
+         * @param {string} prompt - ユーザーが入力したプロンプト（料理名など）
+         */
+        const generateImages = async (prompt) => {
+            setGeneratingUIState(true); // ボタンを無効化し、ローディング表示を開始
+            currentImagePrompt = null;  // 前回のプロンプトをリセット
+            let success = false;        // 生成が成功したかどうかのフラグ
+
+            try {
+                // スタイルと背景の値を取得
+                const style = document.getElementById('styleSelect').value;
+                let background = document.getElementById('backgroundInput').value.trim();
+                if (!background) {
+                    // よく使う「明るいカフェ」の要素を英語で設定
+                    background = 'bright cafe lighting, cinematic, shallow depth of field, warm color grading'; 
+                }
+
+                // 高度なプロンプトを作成
+                const translatedPrompt = await createImagePrompt(prompt, style, background);
+                currentImagePrompt = translatedPrompt; // プロンプトを保存
+
+                const payload = { 
+                    instances: { prompt: translatedPrompt }, 
+                    parameters: { "sampleCount": IMAGE_COUNT } 
+                };
+
+                const response = await fetchWithRetry(() => fetch(IMAGE_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }));
+
+                const result = await response.json();
+                const images = result?.predictions;
+
+                if (!images || images.length === 0) {
+                    throw new Error('No images returned');
+                }
+
+                // 画像表示エリアをクリアしてから新しい画像を追加
+                imageGrid.innerHTML = '';
+                images.forEach(image => {
+                    if (image.bytesBase64Encoded) {
+                        renderImage(image.bytesBase64Encoded, prompt);
+                    }
+                });
+
+                // 最初の画像を自動で選択状態にする
+                const firstImageCard = document.querySelector('.image-card');
+                if (firstImageCard) {
+                    firstImageCard.click();
+                }
+
+                success = true; // 成功フラグを立てる
+
+            } catch (error) {
+                console.error('Image generation failed:', error);
+                let errorMessage = '画像生成に失敗しました。';
+                if (error.message.includes('API認証エラー')) {
+                    errorMessage += 'APIキーの問題、またはサービスが利用できない可能性があります。しばらくしてから再度お試しください。';
+                } else {
+                    errorMessage += `エラー: ${error.message}`;
+                }
+                imageGrid.innerHTML = `<p class="text-red-400 text-center">${errorMessage}</p>`;
+            } finally {
+                // ローディング表示を終了し、ボタンを再度有効化
+                setGeneratingUIState(false);
+                // 成功した場合のみ、食レポなどの追加機能を表示
+                if (success) {
+                    additionalContent.classList.remove('hidden');
+                }
+            }
+        };
+
+        /**
+         * 生成された画像を画面に表示する
+         * @param {string} base64Data - 画像のBase64データ
+         * @param {string} prompt - 元のプロンプト
+         */
+        const renderImage = (base64Data, prompt) => {
+            const imageUrl = `data:image/png;base64,${base64Data}`;
+            const grid = imageGrid;
+
+            const imageCard = document.createElement('div');
+            imageCard.className = 'image-card';
+
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = prompt;
+
+            // ダウンロードボタン
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'image-overlay';
+            downloadBtn.innerHTML = '<span class="material-icons text-white text-3xl">download</span>';
+
+            // ダウンロード処理の実装
+            downloadBtn.addEventListener('click', async (e) => {
+                e.stopPropagation(); // カード選択イベントが発火するのを防ぐ
+
+                try {
+                    // UIフィードバック：一時的に無効化
+                    downloadBtn.style.pointerEvents = 'none';
+                    downloadBtn.style.opacity = '0.5';
+
+                    // Base64をBlobに変換（iOS等での成功率を上げる）
+                    const response = await fetch(imageUrl);
+                    const blob = await response.blob();
+                    const tempUrl = URL.createObjectURL(blob);
+
+                    // 一時的なリンクを作ってクリック
+                    const a = document.createElement('a');
+                    a.href = tempUrl;
+                    a.download = `meshi_maker_${getFormattedDateTime()}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+
+                    // メモリ解放とUI復帰
+                    setTimeout(() => URL.revokeObjectURL(tempUrl), 100);
+                    // showToast('画像を保存しました', true);
+
+                } catch (err) {
+                    console.error("Download failed:", err);
+                    showToast('保存に失敗しました', false);
+                } finally {
+                    downloadBtn.style.pointerEvents = 'auto';
+                    downloadBtn.style.opacity = '1';
+                }
+            });
+
+            imageCard.appendChild(img);
+            imageCard.appendChild(downloadBtn);
+            grid.appendChild(imageCard);
+
+            // 画像カードがクリックされた時の処理
+            imageCard.addEventListener('click', () => {
+                if (isGeneratingText) return; // テキスト生成中は選択不可
+
+                // すでに選択済みの場合は何もしない
+                if (imageCard.classList.contains('selected')) {
+                    return;
+                }
+
+                // 他の画像の選択を解除して、クリックされたものを選択状態にする
+                document.querySelectorAll('.image-card').forEach(card => card.classList.remove('selected'));
+                imageCard.classList.add('selected');
+                selectedImageBase64 = base64Data;
+            });
+        };
+
+        function getFormattedDateTime() {
+            const now = new Date();
+            return `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+        }
+
+        // --- テキスト生成とユーティリティ ---
+        /**
+         * 画像を元にテキスト（食レポ・献立）を生成する
+         * @param {string} base64Data - 画像のBase64データ
+         * @param {string} systemPrompt - AIへの指示
+         * @param {string} userPrompt - AIへの質問
+         * @returns {Promise<string>} 生成されたテキスト
+         */
+        const generateTextFromImage = async (base64Data, systemPrompt, userPrompt) => {
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: userPrompt },
+                        { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+                    ]
+                }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                }
+            };
+
+            const response = await fetchWithRetry(() => fetch(LLM_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }));
+            const result = await response.json();
+            const generatedText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!generatedText) throw new Error('生成されたテキストが見つかりません');
+            return generatedText;
+        };
+
+        /**
+         * テキストをクリップボードにコピーする
+         */
+        const copyToClipboard = (text, buttonElement) => {
+            if (!text) return;
+
+            //  従来の textarea を作る方法（確実に動く）
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            // 画面がズレないように隠す工夫
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            textarea.style.top = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+
+            try {
+                document.execCommand('copy');
+
+                // --- UI演出：アイコン変化（連打対応） ---
+                if (buttonElement) {
+                    // すでにタイマーが動いている（連打された）場合は、一旦クリアして即座に元に戻す
+                    if (copyTimer) {
+                        clearTimeout(copyTimer);
+                        buttonElement.innerHTML = originalIconContent;
+                    }
+
+                    // 現在の「正しいアイコン」を保存しておく
+                    originalIconContent = buttonElement.innerHTML;
+
+                    // チェックアイコンに変更（垂直位置ズレ対策のスタイルを追加）
+                    // inline-flex と items-center で強制的に中央化します
+                    buttonElement.innerHTML = `<span class="material-icons text-green-400" style="font-size: inherit; vertical-align: middle; display: inline-flex; align-items: center;">check</span>`;
+
+                    // 1.5秒後に元に戻す
+                    copyTimer = setTimeout(() => {
+                        buttonElement.innerHTML = originalIconContent;
+                        copyTimer = null;
+                        originalIconContent = null;
+                    }, 1500);
+                }
+                // showToast('コピーしました！', true);
+
+            } catch (err) {
+                console.error('Copy failed', err);
+                showToast('コピーに失敗しました。', false);
+            } finally {
+                document.body.removeChild(textarea);
+            }
+        };
+
+        // ========= トーストメッセージを表示する関数 =========
+        // @param {string} msg - 表示するメッセージ
+        // @param {boolean|null} isSuccess - 成功したかどうかのフラグ (nullの場合は探索中)
+        function showToast(msg, isSuccess) {
+            const toastId = 'meshi-toast';
+            console.log(`[TOAST] ${msg}`);
+
+            if (toastTimeoutId) {
+                clearTimeout(toastTimeoutId);
+                toastTimeoutId = null;
+            }
+
+            // 20ms遅延させて、重いDOM操作中のレンダリング競合を回避
+            setTimeout(() => {
+                const existingToast = document.getElementById(toastId);
+                if (existingToast) {
+                    existingToast.remove();
+                }
+
+                const toast = document.createElement('div');
+                toast.textContent = msg;
+                toast.id = toastId;
+                toast.classList.add('meshi-toast');
+
+                let bgColor;
+                if (isSuccess === true) {
+                    bgColor = '#007bff';
+                } else if (isSuccess === false) {
+                    bgColor = '#dc3545';
+                } else {
+                    bgColor = '#6c757d';
+                }
+
+                toast.style.cssText = `
+                    position: fixed; bottom: 0px; left: 50%; transform: translateX(-50%);
+                    background: ${bgColor}; color: white; padding: 4px 20px;
+                    border-radius: 14px; z-index: 100000;
+                    height: 24px;
+                    font-size: 14px; transition: opacity 1.0s ease, transform 1.0s ease; opacity: 0;
+                `;
+                toast.style.display = 'flex';          // Flexbox有効化
+                toast.style.alignItems = 'center';     // 垂直方向の中央揃え
+                toast.style.justifyContent = 'center'; // 水平方向の中央揃え
+                document.body.appendChild(toast);
+
+                // フェードインアニメーションを起動
+                setTimeout(() => {
+                    toast.style.opacity = '1';
+                    toast.style.transform = 'translate(-50%, -16px)';
+                }, 10);
+
+                // 自動非表示ロジック
+                if (isSuccess !== null) {
+                    toastTimeoutId = setTimeout(() => {
+                        toast.style.opacity = '0';
+                        toast.style.transform = 'translate(-50%, 0)';
+                        setTimeout(() => {
+                            if (document.body.contains(toast)) {
+                                toast.remove();
+                            }
+                            if (toastTimeoutId) {
+                                toastTimeoutId = null;
+                            }
+                        }, 1000);
+                    }, 3000);
+                }
+            }, 20);
+        }
+
+        /**
+         * AIが生成したテキストから不要な部分（Markdownなど）を取り除く
+         * @param {string} text - 整形したいテキスト
+         * @returns {string} 整形後のテキスト
+         */
+        const cleanAndFormatText = (text) => {
+            if (!text) return '';
+            return text.replace(/```/g, '').trim();
+        };
+
+        /**
+         * 献立のアイデアを生成する
+         */
+        const generateMenuIdea = async () => {
+            if (!selectedImageBase64) {
+                showToast('画像を選択してね！', false);
+                return;
+            }
+
+            // UIをテキスト生成中の状態に更新
+            isGeneratingText = true;
+            disableAllButtons();
+            promptResultBox.classList.remove('hidden');
+            resultText.textContent = '';
+            copyBtn.classList.add('hidden');
+            galmojiToggleBtn.classList.add('hidden');
+            kansaiToggleBtn.classList.add('hidden');
+            hakataToggleBtn.classList.add('hidden');
+            tsugaruToggleBtn.classList.add('hidden');
+            uchinaguchiToggleBtn.classList.add('hidden');
+            textLoadingIndicator.classList.remove('hidden');
+            promptResultBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.getElementById('charCount').textContent = ''; 
+            copyBtnTooltip.textContent = '献立のアイデアコピー';
+
+            // AIへの指示
+            const imageContext = currentImagePrompt ? `\n【補足情報: 画像生成時の詳細指示】\n${currentImagePrompt}` : "";
+            const systemPrompt = "あなたは創造的な料理研究家です。画像に写っている料理を「主菜」として、栄養バランスと彩りを考慮した献立を3パターン提案してください。各献立には「主食」「副菜」「汁物」を具体的に含めてください。例えば、「さっぱりとした和風献立」「スタミナ満点の洋風献立」「野菜たっぷりのヘルシー献立」のように、テーマを持たせた提案をすると、より魅力的になります。箇条書きで分かりやすく提示してください。";
+            const userPrompt = `この画像に写っている料理に合う献立を提案してください。
+                ${imageContext}
+                ※この指示で生成された画像であることを考慮し、具体的な食材を活かした提案をしてください。`;
+
+            try {
+                const generatedText = await generateTextFromImage(selectedImageBase64, systemPrompt, userPrompt);
+
+                // テキストを表示してボタンを有効化
+                const formattedText = cleanAndFormatText(generatedText);
+                resultText.textContent = formattedText;
+                copyBtn.classList.remove('hidden');
+            } catch (error) {
+                console.error('テキスト生成に失敗しました:', error);
+                let errorMessage = `テキスト生成に失敗しました: ${error.message}`;
+                if (error.message.includes('API認証エラー')) {
+                    errorMessage = 'テキスト生成に失敗しました。API認証エラーが発生している可能性があります。しばらくしてから再度お試しください。';
+                }
+                resultText.textContent = errorMessage;
+            } finally {
+                // UIを通常状態に戻す
+                isGeneratingText = false;
+                enableAllButtons();
+                textLoadingIndicator.classList.add('hidden');
+            }
+        };
+
+        /**
+         * 食レポを生成する
+         */
+        const generateFoodReview = async () => {
+            if (!selectedImageBase64) {
+                showToast('画像を選択してね！', false);
+                return;
+            }
+
+            // UIをテキスト生成中の状態に更新
+            isGeneratingText = true;
+            disableAllButtons();
+            promptResultBox.classList.remove('hidden');
+            resultText.textContent = '';
+            copyBtn.classList.add('hidden');
+            galmojiToggleBtn.classList.add('hidden');
+            kansaiToggleBtn.classList.add('hidden');
+            hakataToggleBtn.classList.add('hidden');
+            tsugaruToggleBtn.classList.add('hidden');
+            uchinaguchiToggleBtn.classList.add('hidden');
+            textLoadingIndicator.classList.remove('hidden'); 
+            promptResultBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.getElementById('charCount').textContent = ''; 
+            copyBtnTooltip.textContent = '食レポコピー';
+
+            try {
+                // 1段階目：料理のカテゴリーを判定
+                const categorySystemPrompt = `あなたは料理のカテゴリーを判定するアシスタントです。画像から料理のカテゴリーを判断し、以下の3つのうち最も近いものを一つだけ日本語で回答してください。余計な説明や文章は一切含めないでください。`;
+                const categoryUserPrompt = `この画像に写っている料理のカテゴリーは「カジュアル・ジャンク系」「繊細・高級系」「中間・汎用系」のどれに最も近いですか？`;
+                const categoryText = await generateTextFromImage(selectedImageBase64, categorySystemPrompt, categoryUserPrompt);
+
+                if (!categoryText) {
+                    throw new Error('料理のカテゴリー判定に失敗しました。');
+                }
+
+                // 2段階目：カテゴリーに応じた食レポを生成
+                const length = parseInt(lengthSelect.value, 10);
+
+                // ハッシュタグ（約22文字）の分を考慮して、本文のターゲットを決める
+                const tagLength = 25; 
+                const maxBodyLength = length - tagLength;
+                const minBodyLength = maxBodyLength - 20;
+
+                // 文字数指示
+                const lengthInstruction = `
+                #厳守事項:
+                あなたは文章の推敲と文字数調整のプロフェッショナルです。
+                最終的な出力は、必ず以下の #文字数 条件を**1文字の狂いもなく**満たさなければなりません。
+
+                #文字数:
+                ・本文の下限: ${minBodyLength}字
+                ・本文の上限: ${maxBodyLength}字 (超過は即エラーとみなします)
+                ※句読点、記号、改行、スペースをすべて含めた合計文字数です。
+
+                #生成手順:
+                1. まず画像に基づき、最高の食レポを自由に記述してください（初期ドラフト）。
+                2. ドラフトの文字数を厳密にカウントしてください。
+                3. カウントした文字数が ${minBodyLength}～${maxBodyLength} 文字の範囲に収まるまで、無駄な修飾語を削るか、描写を補足して徹底的に調整してください。
+                4. 最終的に条件を完璧に満たした文章**のみ**を出力してください。
+                5. プロセスやカウント結果は出力に含めないでください。`;
+
+                // --- カテゴリごとの役割定義 ---
+                let systemPrompt;
+
+                // 共通の文体指示（すべてのスタイルに適用してこなれ感を出す）
+                const nuanceInstruction = `
+                #表現の指針:
+                ・「見てください！」「わ～！」といった定型文や、カメラを意識しすぎた実況は避けてください。
+                ・一口ごとに溢れる「自分の本音」を実況するスタイルが理想です。
+                ・「～です」「～ます」の連続を避け、適度に【体言止め】や【感嘆（「あぁ、たまらん」「これこれ」など）】を混ぜ、リズムを作ってください。
+                ・SNSで思わず手が止まるような、生きた言葉、温度感のある言葉を選んでください。`;
+
+                if (categoryText.includes("カジュアル・ジャンク系")) {
+                    systemPrompt = `あなたは食にこだわりが強い、SNSで大人気のグルメインフルエンサーです。
+                直感的な快楽と、カロリーへの罪悪感を突き抜けるような「本音の食欲」を綴ってください。
+                読者に教えるのではなく、自分の感動を独り言のように共有するスタイルが理想です。
+                ${nuanceInstruction}
+                ${lengthInstruction}`;
+
+                } else if (categoryText.includes("繊細・高級系")) {
+                    systemPrompt = `あなたは美食番組のベテランレポーターですが、今回は私的なSNS投稿として書いてください。
+                洗練された言葉選びの中に、プロでも思わず唸ってしまうような「真実味のある感動」を込めてください。
+                過剰な飾り言葉は避け、素材の力や職人の技を、静かな熱量で描写してください。
+                ${nuanceInstruction}
+                ${lengthInstruction}`;
+
+                } else {
+                    systemPrompt = `あなたは経験豊富なグルメ雑誌のライターです。今回は仕事ではなく、自身のSNSでの活動として投稿してください。
+                読者が味や香りを自分のことのように想像できる、リアルで魅力的な言葉を選んでください。
+                客観的な解説ではなく、その場にいるような臨場感を大切にしてください。
+                ${nuanceInstruction}
+                ${lengthInstruction}`;
+                }
+
+                // 画像生成プロンプトを補助情報として渡す
+                const imageContext = currentImagePrompt ? `\n【補足情報: 画像生成時の詳細指示】\n${currentImagePrompt}` : "";
+
+                const userPrompt = `この料理の食レポを書いてください。解説や文字数は含めず、食レポの本文のみを出力してください。
+                    ${imageContext}
+                    ※上記の指示に基づいて生成された画像です。内容を正しく理解するための参考にしてください。`;
+
+                // ３回リトライして、そのうちのベストを採用する
+                const threshold = length + 50; // 合格ラインの壁
+                let attempts = []; // 生成した全文を保存しておくリスト
+
+                for (let i = 1; i <= 3; i++) {
+                    // AIに生成させる
+                    const reviewText = await generateTextFromImage(selectedImageBase64, systemPrompt, userPrompt);
+                    if (!reviewText) continue; // 失敗したら次の試行へ
+
+                    // タグをくっつけた「完成形」を作る
+                    const fullText = cleanAndFormatText(reviewText) + "\n\n#Gemini #AIart #飯テロ";
+                    attempts.push(fullText);
+
+                    // 指定文字数以下なら、その場で終了して採用
+                    if (fullText.length <= length) {
+                        originalText = fullText;
+                        break;
+                    }
+
+                    // 3回終わっても完璧なのが出なかった場合の最終判断
+                    if (i === 3) {
+                        // 許容範囲（+50）以内のものが1つでもあるか探す
+                        const acceptableTexts = attempts.filter(t => t.length <= threshold);
+                        if (acceptableTexts.length > 0) {
+                            // 許容範囲内で「一番短いもの」を採用
+                            originalText = acceptableTexts.reduce((a, b) => a.length < b.length ? a : b);
+                        } else if (attempts.length > 0) {
+                            // 全部+50を超えてたら、全試行の中で「一番短いもの」を採用
+                            originalText = attempts.reduce((a, b) => a.length < b.length ? a : b);
+                            showToast('少し長めになっちゃったかも！調整してね。', false);
+                        }
+                    }
+                }
+
+                // ループを抜けた後、最終的にテキストが生成できているかチェック
+                if (!originalText) {
+                    throw new Error('食レポの生成に失敗しました。');
+                }
+
+                // 表示処理
+                resultText.textContent = originalText;
+                updateCharCount();
+
+                copyBtn.classList.remove('hidden');
+                galmojiToggleBtn.classList.remove('hidden');
+                kansaiToggleBtn.classList.remove('hidden');
+                hakataToggleBtn.classList.remove('hidden');
+                tsugaruToggleBtn.classList.remove('hidden');
+                uchinaguchiToggleBtn.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('予期せぬエラーが発生しました:', error);
+                let errorMessage = `予期せぬエラーが発生しました: ${error.message}`;
+                if (error.message.includes('API認証エラー')) {
+                    errorMessage = '予期せぬエラーが発生しました。API認証エラーが発生している可能性があります。しばらくしてから再度お試しください。';
+                }
+                resultText.textContent = errorMessage;
+            } finally {
+                // UIを通常状態に戻す
+                isGeneratingText = false;
+                enableAllButtons();
+                textLoadingIndicator.classList.add('hidden');
+            }
+        };
+
+        /**
+         * 生成開始時のUI状態をセットアップする
+         * @param {boolean} isLoading - 生成中か
+         */
+        const setGeneratingUIState = (isLoading) => {
+            const buttons = [generateBtn, todaySpecialBtn, seasonalSpecialBtn, trendSpecialBtn];
+            buttons.forEach(btn => {
+                if (btn) btn.disabled = isLoading;
+            });
+            if (isLoading) {
+                // 生成開始時：インジケーター表示、古いコンテンツを隠す
+                imageGrid.innerHTML = '';
+                loadingIndicator.classList.remove('hidden');
+                additionalContent.classList.add('hidden');
+                promptResultBox.classList.add('hidden');
+            } else {
+                // 完了時（エラー含む）：インジケーターを隠す
+                loadingIndicator.classList.add('hidden');
+                // ※ generateImages側の finally で success 判定があるため、
+                // additionalContent の表示はここではあえて行わず generateImages に任せます
+            }
+        };
+
+        /**
+         * シェフの気まぐれメニューを提案し、自動で生成を開始する
+         * @param {string} type - 'anniversary' (記念日), 'seasonal' (季節), 'trend' (トレンド)
+         */
+        const suggestChefMenu = async (type) => {
+            if (generateBtn.disabled) return;
+            setGeneratingUIState(true); // UIの初期化とボタン無効化
+
+            // 現在の日付情報を取得（2026年想定）
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+
+            let typeContext = "";
+            if (type === 'anniversary') {
+                typeContext = `${dateStr}の「今日は何の日」や記念日にちなんだ、写真映えする食べ物。`;
+            } else if (type === 'seasonal') {
+                typeContext = `${now.getMonth() + 1}月の季節感、旬の食材、その時期の天候にぴったりの彩り豊かな食べ物。`;
+            } else if (type === 'trend') {
+                typeContext = `現在SNSでバズっている、あるいは食通の間で話題の、見た目のインパクトが強い最新フードトレンド。`;
+            }
+
+            const systemPrompt = "あなたはトレンドに敏感な凄腕シェフ兼、食のキュレーターです。提示されたテーマに最適な料理を1つだけ提案してください。";
+            const userPrompt = `テーマ: ${typeContext}
+                上記テーマに合う「料理名」と、その料理が最も美味しそうに見える「背景やシチュエーション」を考えてください。
+
+                出力は必ず以下のJSONフォーマットのみで行ってください。
+                {"food": "料理名", "background": "背景やシチュエーション"}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json" // 確実にJSONで受け取る
+                }
+            };
+
+            try {
+                // テキスト生成APIを呼び出し
+                const response = await fetchWithRetry(() => fetch(LLM_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }));
+
+                const result = await response.json();
+                const suggestionText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (!suggestionText) throw new Error('シェフが不在のようです');
+
+                const suggestion = JSON.parse(suggestionText);
+
+                // 入力欄に反映
+                promptInput.value = suggestion.food;
+                backgroundInput.value = suggestion.background;
+
+                showToast(`👩🏻‍🍳：${suggestion.food.length > 20 ? suggestion.food.substring(0, 20) + "..." : suggestion.food}`, true);
+
+                await generateImages(suggestion.food);
+
+            } catch (error) {
+                console.error('提案エラー:', error);
+                showToast('シェフが仕込み中みたい。もう一度試してね！', false);
+                setGeneratingUIState(false);
+            }
+        };
+
+        /**
+         * Base64画像をFirebase Cloud Storageにアップロードし、ダウンロードURLを返す
+         * @param {string} base64Image - アップロードする画像のBase64データ
+         * @param {string} userId - 認証済みのユーザーID (user.uid)
+         * @returns {Promise<string>} ダウンロード可能なURL
+         */
+        async function uploadToCloudStorage(base64Image, userId) {
+            if (!userId || userId === '認証中...') {
+                throw new Error("ユーザー認証が完了していません。画像を保存できません。");
+            }
+
+            // Cloud Storage内の保存パスを決定 (例: users/{userId}/{timestamp}.png)
+            const timestamp = Date.now();
+            const storageRef = ref(storage, `users/${userId}/${timestamp}.png`);
+
+            // Base64データをアップロード (data_url形式でアップロード)
+            const dataUrl = `data:image/png;base64,${base64Image}`;
+
+            // Base64でのアップロード実行
+            const snapshot = await uploadString(storageRef, dataUrl, 'data_url');
+
+            // ダウンロードURLを取得
+            const downloadURL = await getDownloadURL(snapshot.ref);
+
+            return downloadURL;
+        }
+
+        // ギャル文字ON/OFFボタンがクリックされた時
+        galmojiToggleBtn.addEventListener('click', () => {
+            if (!originalText) {
+                showToast('先に「食レポ生成」を行ってください。', false);
+                return;
+            }
+            if (currentTransformMode === 'galmoji') {
+                resetAllToggleButtons();
+            } else {
+                resetAllToggleButtons();
+                currentTransformMode = 'galmoji';
+                galmojiToggleBtn.classList.remove('text-gray-400');
+                galmojiToggleBtn.classList.add('text-pink-400');
+                // ギャル文字変換を実行
+                const [body, hashtags] = originalText.split('\n\n#Gemini');
+                const convertedBody = convertToGalmoji(body);
+                resultText.textContent = convertedBody + '\n\n#Gemini' + hashtags;
+                updateCharCount();
+            }
+        });
+
+        // 方言切り替えの共通処理
+        const handleDialectClick = async (dialect, buttonElem, activeClass) => {
+            if (!originalText) {
+                showToast('先に「食レポ生成」を行ってください。', false);
+                return;
+            }
+
+            if (currentTransformMode === dialect) {
+                resetAllToggleButtons();
+            } else {
+                resetAllToggleButtons();
+                currentTransformMode = dialect;
+                buttonElem.classList.remove('text-gray-400');
+                buttonElem.classList.add(activeClass);
+                
+                // 翻訳実行（キャッシュがあればすぐ返ってくる）
+                await translateWithAI(dialect);
+            }
+        };
+
+        /**
+         * AIを使って方言に翻訳する（初回クリック時に全方言を一括翻訳）
+         * @param {string} dialect - 表示したい方言名
+         */
+        const translateWithAI = async (dialect) => {
+            // 1. キャッシュ確認（既にあればそれを表示して終了）
+            if (translatedTextCache[dialect]) {
+                resultText.textContent = translatedTextCache[dialect];
+                updateCharCount();
+                return;
+            }
+
+            // まだキャッシュがない場合のみ、AIへ「一括」リクエストを飛ばす
+            disableAllButtons();
+            textLoadingIndicator.classList.remove('hidden');
+
+            try {
+                // タグを保護
+                const parts = originalText.split('\n\n#Gemini');
+                const bodyText = parts[0];
+                const hashtags = parts.length > 1 ? '\n\n#Gemini' + parts[1] : '';
+
+                // 一括翻訳用のシステムプロンプト
+                const systemPrompt = `あなたは方言変換の専門家です。入力された日本語を【関西弁】【博多弁】【津軽弁】【うちなーぐち】の4種類に変換してください。
+                    各方言とも意味と文字数を維持し、余計な解説は含まず、必ず以下のJSONフォーマットのみで回答してください。
+                    {"関西弁":"...","博多弁":"...","津軽弁":"...","うちなーぐち":"..."}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: bodyText }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: { responseMimeType: "application/json" } // JSONモード
+                };
+
+                const response = await fetchWithRetry(() => fetch(TRANSLATION_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }));
+
+                const result = await response.json();
+                const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                // JSON解析エラー対策
+                let translations;
+                try {
+                    translations = JSON.parse(jsonText);
+                } catch (e) {
+                    // 万が一JSON以外の文字が混ざっていた場合の抽出
+                    const jsonMatch = jsonText.match(/\{.*\}/s);
+                    if (jsonMatch) {
+                        translations = JSON.parse(jsonMatch[0]);
+                    } else {
+                        throw new Error("JSON形式での取得に失敗しました");
+                    }
+                }
+
+                // 全方言を一気にキャッシュに保存
+                const dialectKeys = ['関西弁', '博多弁', '津軽弁', 'うちなーぐち'];
+                dialectKeys.forEach(key => {
+                    if (translations[key]) {
+                        translatedTextCache[key] = translations[key] + hashtags;
+                    }
+                });
+
+                // 今回クリックされた方言を表示
+                if (translatedTextCache[dialect]) {
+                    resultText.textContent = translatedTextCache[dialect];
+                    updateCharCount();
+                }
+
+            } catch (error) {
+                console.error(`一括翻訳エラー:`, error);
+                showToast(`翻訳に失敗しました。`, false);
+                resultText.textContent = originalText; 
+                resetAllToggleButtons();
+            } finally {
+                enableAllButtons();
+                textLoadingIndicator.classList.add('hidden');
+            }
+        };
+
+        // 文字数表示を更新する関数
+        const updateCharCount = () => {
+            document.getElementById('charCount').textContent = `${resultText.textContent.length} 文字`;
+        };
+
+        // --- UI操作ヘルパー関数 ---
+
+        /**
+         * 全ての操作ボタンを無効化する
+         */
+        const disableAllButtons = () => {
+            generateBtn.disabled = true;
+            document.querySelectorAll('.llm-button, .llm-select').forEach(el => el.disabled = true);
+        };
+
+        /**
+         * 全ての操作ボタンを有効化する
+         */
+        const enableAllButtons = () => {
+            generateBtn.disabled = false;
+            document.querySelectorAll('.llm-button, .llm-select').forEach(el => el.disabled = false);
+        };
+
+        // --- イベントリスナーの設定 ---
+
+        // 「飯テロ生成」ボタンがクリックされた時
+        generateBtn.addEventListener('click', () => {
+            resetAllToggleButtons();
+            translatedTextCache = {};
+            const prompt = promptInput.value;
+            if (prompt.trim() !== '') {
+                generateImages(prompt);
+            }
+        });
+
+        // 入力欄でEnterキーが押された時
+        promptInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                generateBtn.click();
+            }
+        });
+        backgroundInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                generateBtn.click();
+            }
+        });
+
+        // 「食レポ生成」ボタンがクリックされた時
+        reviewBtn.addEventListener('click', async () => {
+            resetAllToggleButtons();
+            translatedTextCache = {};
+            await generateFoodReview();
+        });
+
+        // 「献立のアイデア」ボタンがクリックされた時
+        menuBtn.addEventListener('click', () => {
+            resetAllToggleButtons();
+            translatedTextCache = {};
+            generateMenuIdea();
+        });
+
+        // ギャル文字・方言モードをすべてリセットする関数
+        const resetAllToggleButtons = () => {
+            currentTransformMode = null;
+            resultText.textContent = originalText;
+            updateCharCount();
+
+            // すべてのボタンの色と状態をリセット
+            const allToggleButtons = [galmojiToggleBtn, kansaiToggleBtn, hakataToggleBtn, tsugaruToggleBtn, uchinaguchiToggleBtn];
+            allToggleButtons.forEach(btn => {
+                btn.classList.remove('text-pink-400', 'text-emerald-400', 'text-purple-400', 'text-sky-400', 'text-orange-400');
+                btn.classList.add('text-gray-400');
+            });
+        };
+
+        // 文章コピーボタン
+        copyBtn.addEventListener('click', (event) => {
+            copyToClipboard(resultText.textContent, event.currentTarget);
+        });
+
+        // プロンプトコピーボタン
+        promptCopyBtn.addEventListener('click', (event) => {
+            if (currentImagePrompt) {
+                copyToClipboard(currentImagePrompt, event.currentTarget);
+            } else {
+                showToast('プロンプトがありません。', false);
+            }
+        });
+
+        /**
+         * ひらがな・カタカナ・アルファベット・漢字をギャル文字にランダム変換する関数
+         * @param {string} text - 変換対象の文字列
+         * @returns {string} - 変換されたギャル文字の文字列
+         */
+        const convertToGalmoji = (text) => {
+            // ギャル文字の変換ルールを定義したマップ
+            const galmojiMap = {
+                '現':['王見'], '科':['禾斗'], '私':['禾ﾑ'], '叶':['ﾛ十'], '役':['ﾃ殳'],
+                '例':['ｲ歹ﾘ'], '近':['辶斤'], '健':['ｲ廴聿'], '有':['ﾅ月'], '名':['ﾀ。'],
+                '氷':['⊃i⊂','ﾗ|＜'], '天':['无'], '本':['夲'], '来':['來'], '神':['ﾈ申'],
+                '超':['走召'], '林':['木木'], '校':['木交'], '絶':['糸色'], '級':['糸及'],
+                '鉄':['金失','金矢'], '柿':['木市'], '仔':['ｲ子'], '愛してる':['愛ιτゑ','愛Uτゑ'],
+                '仲良し':['人㊥ょU','イ㊥夜歹ﾋ','仲仔'], '謝':['言身寸'], '終':['糸冬'], '対':['文寸'],
+                '便':['イ更戸斤'], '桂':['木圭'], '大':['因'], '人':['囚'], '木':['困'],
+                '巻':['圏'], '口':['回'], '幸':['圉'], '水':['囦'], '子':['囝'],
+                '女':['囡'], '寸':['団'], '井':['囲'], '化':['囮'], '元':['园'],
+                '爪':['図'], '不':['囨'], '古':['固'], '八土':['囶'], '玉':['国'],
+                '令':['囹'], '四方八方':['4ほぅ圀'], '有':['囿'], '書':['圕'], '幸':['圉'],
+                '員':['圓'], '日':['Θ','曰'], '中':['Φ','㊥'], 'チート':['升'], '行':['ﾃﾃ','〒〒'],
+                '給料':['糸合米斗'], '就活':['京尤シ舌'], '仕':['ｲ士'], '休':['ｲ木'],
+                '祝':['ﾈ兄'], '読':['言売'], '欲':['谷欠'], '願':['原頁'], '朋':['月月'],
+                '語':['言吾'], '認':['言忍'], '続':['糸売'], '使':['ｲ吏'], '死':['ﾀﾋ'],
+                '上':['㊤'], '下':['㊦'], '左':['㊧','ﾅｪ'], '右':['㊨'], '印':['㊞','E卩'],
+                'まじ':['まぢ'], 'てゆうか':['ッ塚'], '～て言っていて':['～ッ乙ゆｳねぇ'],
+                'あ':['ぁ','ァ','了'], 'い':['ぃ','ィ','ﾚヽ','ﾚ丶','レ）','ﾚ`','L丶','L1','ﾚl'],
+                'う':['ぅ','ゥ','宀','ヴ','ウ'], 'え':['ぇ','ェ','之','工','ヱ'], 'お':['ぉ','ォ','才'],
+                'か':['ｶゝ','ｶ丶','ｶヽ','ヵゝ','ｶ`','ｶゞ','カ'], 'が':['ヵゞ'], 'ガ':['カ゛','力゛'],
+                'き':['(ｷ','(≠','L≠','‡'], 'く':['＜','〈','勹'], 'け':['ヶ','(ﾅ','ﾚ†','ﾚﾅ','|ナ','l+','Iﾅ'],
+                'こ':['〓','=','L','⊃','⊇'], 'さ':['廾','±','(十','L+','(+','ﾅ'], 'し':['ι','∪','U'],
+                'す':['￡','ﾌ'], 'せ':['世'], 'そ':['ξ','ζ','`ﾉ','丶/','ヽ丿'],
+                'た':['ﾅ=','+=','†ﾆ','ﾅﾆ','十こ','†こ','ﾅ⊇','T=','十=','夕'],
+                'ち':['干','千','于','ろ＋'], 'つ':['っ','ッ','⊃','ﾂ'], 'て':['τ','〒','z','乙'],
+                'と':['┠','┝','┣','├','`⊂','卜','`c'], 'な':['ﾅょ','十ょ','†ょ','ﾅg','†ょゝ','十'],
+                'に':['(ﾆ','|=','丨ﾆ','L=','I=','（⊇','レこ','(二','〓','ﾚﾆ'],
+                'ぬ':['йu','ゐ'], 'ね':['йё'], 'の':['/','丿','σ','⊂n','＠'],
+                'は':['\'`','八','l￡','(￡','ﾉ|','ﾉl','ﾚ￡','ﾚよ'],
+                'バ':['ﾊ〃'], 'パ':['ﾊo'], 'ひ':['匕'], 'ビ':['ﾋ〃'], 'ピ':['ﾋo'],
+                'ふ':['ヴ',',ζ'], 'ブ':['ﾌ〃'], 'プ':['ﾌo'], 'へ':['～','∧'], 'べ':['ﾍ〃'],
+                'ペ':['ﾍo'], 'ほ':['朮','ﾚま'], 'ボ':['ﾎ〃'], 'ポ':['ﾎo'],
+                'ま':['ма','мα'], 'み':['彡','ゐ'], 'む':['￡','厶'], 'め':['×','x','χ','乂','〆'],
+                'も':['м○','мσ','=し','=L'], 'や':['ゃ','ャ'], 'ゆ':['ゅ','ュ'],
+                'よ':['ょ','ョ','∋','чo','∃'], 'ら':['яа','ζ','b`'],
+                'り':['L|','l)','ﾚ｣','ﾚ)','┗』','└丿','v)','ﾚ｣','丶)'],
+                'る':['ゐ','ゑ','儿','lﾚ','｣レ','｜ﾚ','ﾉﾚ','/ﾚ'], 'れ':['яё'], 'ろ':['з','З','回'],
+                'わ':['ゎ','ヮ','wα'], 'を':['щo','ぉ','ε'], 'ん':['ω','冫','w','h','ﾝ','ｿ'],
+                'ﾞ':['〃','”','¨'], 'ー':['→','⇒'], '。':['o','○'],
+                // アルファベット
+                'A': ['闩', '月', 'Д', 'д', '＠', 'Å', '∀'],
+                'B': ['吕', '官', '♭', 'в', 'ь'],
+                'C': ['匚', '匸', '￠', '⊂', '℃'],
+                'D': ['囙'],
+                'E': ['ヨ', '巨', '臣', '巳', 'ㅌ', 'ё'],
+                'F': ['孒', '下'],
+                'G': ['⊂┐', 'C┐'],
+                'H': ['丩', 'н'],
+                'I': ['工', '｜'],
+                'J': ['し', '」', '』'],
+                'K': ['|く', 'κ'],
+                'L': ['└', '｜'],
+                'M': ['从', 'ﾍ', '川', '瓜', 'м'],
+                'N': ['冂', '∩', 'и', 'И'],
+                'O': ['口', '○', 'ο'],
+                'P': ['尸', 'ρ'],
+                'Q': ['电', 'O、'],
+                'R': ['尺', 'γ', 'я', 'Я'],
+                'S': ['丂', '＄', '∫'],
+                'T': ['丁', 'て', '十', 'т'],
+                'U': ['凵', '∪', 'ц'],
+                'V': ['レ', '∨'],
+                'W': ['山', 'ш', 'щ', 'Ш', 'Щ'],
+                'X': ['乂', 'χ', '×'],
+                'Y': ['ソ', '￥', 'ч', 'Ч'],
+                'Z': ['乙']
+            };
+
+            let convertedText = '';
+            for (const char of text) {
+                // 変換候補があれば、ランダムに1つ選んで追加
+                if (galmojiMap[char]) {
+                    const options = galmojiMap[char];
+                    const randomIndex = Math.floor(Math.random() * options.length);
+                    convertedText += options[randomIndex];
+                } else {
+                    // 変換候補がなければ、そのまま追加
+                    convertedText += char;
+                }
+            }
+            return convertedText;
+        };
+
+    </script>
+</body>
+</html>
