@@ -1481,7 +1481,10 @@
          * 全ての操作ボタンを無効化する
          */
         const disableAllButtons = () => {
-            generateBtn.disabled = true;
+            const buttons = [generateBtn, todaySpecialBtn, seasonalSpecialBtn, trendSpecialBtn];
+            buttons.forEach(btn => {
+                if (btn) btn.disabled = true;
+            });
             document.querySelectorAll('.llm-button, .llm-select').forEach(el => el.disabled = true);
         };
 
@@ -1489,7 +1492,10 @@
          * 全ての操作ボタンを有効化する
          */
         const enableAllButtons = () => {
-            generateBtn.disabled = false;
+            const buttons = [generateBtn, todaySpecialBtn, seasonalSpecialBtn, trendSpecialBtn];
+            buttons.forEach(btn => {
+                if (btn) btn.disabled = false;
+            });
             document.querySelectorAll('.llm-button, .llm-select').forEach(el => el.disabled = false);
         };
 
